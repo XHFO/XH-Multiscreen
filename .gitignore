@@ -1,0 +1,17 @@
+.DS_Store
+.pio/
+.cache/
+build/
+node_modules/
+artifacts/
+*.bin
+*.elf
+*.map
+*.log
+*.dump
+*.bak
+.env
+.env.*
+credentials*.json
+config.json
+backups/
