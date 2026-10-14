@@ -2,11 +2,23 @@
 const char *c6_renderer_localized(c6_renderer_t *r,const char *zh){
     if(!zh)return zh;
     if(!r->english){
+        if(!strcmp(zh,"扫码连接热点"))return "连接热点";
+        if(!strcmp(zh,"打开配网后台"))return "配网后台";
+        if(!strcmp(zh,"联网成功 · 扫码设置"))return "联网成功";
+        if(!strcmp(zh,"先切回同一 Wi-Fi · 单击指引"))return "同一网络扫码 · 单击指引";
         static const char *polished[][2]={{"轮询卡片","卡片轮转"},{"网页详细配置","网页设置"},{"手机扫码 · 无需 PIN","扫码打开设置"},{"动态翻页","翻页动画"},{"方向与时钟动画","方向、语言与休眠"},{"保留实体与打印机设置","保留打印机设置"},{"网页后台 OTA 更新","网页固件更新"}};
         for(unsigned i=0;i<sizeof(polished)/sizeof(*polished);i++)if(!strcmp(zh,polished[i][0]))return polished[i][1];
         return zh;
     }
     static const char *pairs[][2]={
+        {"扫码连接热点","JOIN WI-FI"},{"打开配网后台","WI-FI SETUP"},
+        {"单击切换二维码 · 长按设置","Tap: switch QR / hold: menu"},{"联网成功 · 扫码设置","WI-FI READY"},
+        {"先切回同一 Wi-Fi · 单击指引","Same Wi-Fi / tap: help"},
+        {"3 配置打印机与天气","3 Printers / weather"},{"在后台填写设备信息","Device settings on web"},
+        {"1 手机切回同一 Wi-Fi","1 Rejoin home Wi-Fi"},{"2 扫码打开设备设置","2 Scan for settings"},
+        {"配置热点即将关闭","Setup hotspot closes"},{"3 添加 Formlabs 打印机","3 Add Formlabs printer"},
+        {"准备序列号与云端凭据","Serial / cloud credentials"},{"联网成功 · 接着配置","WI-FI READY / NEXT"},
+        {"单击扫码 · 双击稍后配置","Tap: QR / double: later"},
         {"打印机总览","PRINTER OVERVIEW"},{"已禁用","DISABLED"},
         {"设备设置","SETTINGS"},{"屏幕显示","DISPLAY"},{"方向与时钟动画","Orientation / animation"},
         {"轮询卡片","CARD ROTATION"},{"选择参与自动轮转的卡片","Choose rotating cards"},
@@ -47,7 +59,9 @@ const char *c6_renderer_localized(c6_renderer_t *r,const char *zh){
         {"等待本地数据","WAITING FOR DATA"},{"请在软件中选择显示卡片","Enable cards on web"},
         {"可用内存","FREE MEMORY"},{"网络地址","NETWORK ADDRESS"},{"长按 BOOT 打开设置","Hold BOOT: settings"},
         {"单击翻页 · 双击详情 · 长按设置","Tap: next / 2x: details / hold: settings"},{"设备状态","DEVICE STATUS"},
-        {"无法生成二维码","QR ERROR"}
+        {"无法生成二维码","QR ERROR"},
+        {"打印机已移除或未同步","Printer not available"},{"请在网页添加打印机","Add printer on web"},
+        {"请在 Mac 同步显示设置","Sync display on Mac"},{"正在恢复卡片","RESTORING CARD"},{"等待最新软件画面","Waiting for new frame"}
     };
     for(unsigned i=0;i<sizeof(pairs)/sizeof(*pairs);i++)if(!strcmp(zh,pairs[i][0]))return pairs[i][1];
     return zh;

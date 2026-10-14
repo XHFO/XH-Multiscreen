@@ -1,14 +1,45 @@
 // UI translations only. Never translate device names, serials or task content.
-let uiEnglish=false;
+let uiEnglish=typeof navigator!=='undefined'&&/^en\b/i.test(navigator.language||'');
 const uiStrings={
+'手动设置经纬度':'Set coordinates manually',
+'Wi-Fi 已连接':'Wi-Fi connected',
+'手机切回同一 Wi-Fi，扫描小屏上的新二维码进入后台。':'Rejoin the same Wi-Fi and scan the new QR on the display to open settings.',
+'数据来源：Open-Meteo。用城市与经纬度设置天气数据位置。':'Source: Open-Meteo. Set the weather location using the city and coordinates.',
+'热点正在收尾，稍等片刻就能继续设置…':'The setup hotspot is closing. Settings will open shortly…',
+'先让小屏找到家':'Give your screen a home',
+'顶部可切换 中文 / English。扫描屏幕的热点二维码连接设备；若后台没有自动弹出，请打开 http://192.168.4.1。':'Choose Chinese / English above. Scan the Wi-Fi QR on the screen to join the setup hotspot. If the portal does not open, visit http://192.168.4.1.',
+'联网完成，接着折腾':'Connected. Let’s make it yours',
+'将手机切回刚才配置的同一 Wi-Fi。':'Rejoin the same Wi-Fi you configured.',
+'扫描小屏上新的局域网二维码，或打开下方地址。':'Scan the new LAN QR on the screen, or open the address below.',
+'在设备设置中添加打印机；也可以先用时钟和天气。':'Add printers in Device settings, or start with the clock and weather.',
+'继续配置设备':'Continue device setup',
+'热点会自动关闭。后台入口已更新为设备的实际局域网 IP，不再是 192.168.4.1。':'The setup hotspot closes automatically. Settings now use the device’s actual LAN IP, not 192.168.4.1.',
+'Wi-Fi 已连接。切回同一网络，扫描新二维码继续配置。':'Wi-Fi connected. Rejoin the same network and scan the new QR to continue.',
+'暂未确认联网。检查密码后重试；若热点已关闭，请查看屏幕的新二维码。':'Connection not confirmed. Check your password and retry. If the hotspot has closed, use the new QR on the screen.',
+'网络已保存，正在等待设备取得局域网 IP…':'Network saved. Waiting for a LAN IP…',
+'网页与小屏使用同一语言，切换后自动保存。':'One language for web and display. Changes save automatically.',
+'正在同步小屏语言…':'Syncing display language…',
+'网页与小屏语言已同步':'Web and display language synced',
+'网页已切换，小屏尚未同步，请重试':'Web language changed. Display not synced; retry.',
+'设备配置已变化，语言未同步。请重试；其他修改仍保留。':'Device settings changed. Language not synced; retry. Other edits are retained.',
+'重试同步':'Retry sync',
+'语言响应无效':'Invalid language response',
+'连上网了，让小屏有点内容':'Online. Give your screen something to show',
+'准备 Formlabs 应用的 Client ID、Client Secret 与打印机序列号。':'Prepare your Formlabs app’s Client ID, Client Secret and printer serial.',
+'选择“添加打印机”，填好信息后自动保存；也可点击“立即保存 / 重试”。':'Choose Add printer. Completed settings save automatically; Save now / Retry is also available.',
+'查看“实时连接状态”，出现“已连接”后再核对设备显示的真实任务。':'Check Live connection status. Once Connected, verify the real task shown on the device.',
+'也可以先使用翻页钟和天气。此项目仍在开发中，保存成功不代表云端验证成功。':'You can start with the flip clock and weather. This project is in development; saved settings do not prove cloud authentication succeeded.',
+'配置第一台打印机':'Set up your first printer',
+'设备配置已读取。下一步：添加打印机，或先体验时钟。':'Settings loaded. Next: add a printer, or try the clock first.',
 '打印机总览':'Printer overview','添加两台或更多打印机后，自动显示总览卡片并加入轮转，集中展示各台设备的状态与进度。':'With two or more printers, an overview card automatically joins rotation and shows each printer’s status and progress.',
 '卡片详细选项':'Card details','卡片样式':'Card style','标准 · 任务封面':'Standard · task cover','超大百分比 · 无缩略图':'Large percentage · no image','剩余打印时间 · 无缩略图':'Remaining time · no image','卡片样式无效':'Invalid card style',
 '新样式自动隐藏任务封面，切回标准样式保留原选项；剩余时间样式始终显示剩余时长。':'New styles hide the cover without changing your saved options. Remaining-time style always shows the remaining duration.',
  '显示内容':'Content','设备':'Device','主数字风格':'Hero numeral style','像素 · 复古仪表':'Pixel · retro instrument','平滑 · 航天曲线':'Smooth · aerospace curves','主数字风格无效':'Invalid numeral style',
  '仅影响翻页钟主数字、天气温度和打印进度百分比。其他文字保持不变，选择后自动保存并应用。':'Applies only to the main clock, weather temperature and print percentage. Other text stays unchanged. Changes save and apply automatically.',
-'预览与演示说明':'About preview & demo',
+'预览说明':'About preview',
 '网页外观':'Web appearance','跟随系统':'System','浅色':'Light','深色':'Dark','立即保存 / 重试':'Save now / Retry',
-'虚拟打印机（演示）':'Virtual printer (demo)','模拟任务与封面，仅用于布局检查；不访问真实打印机，重启后关闭。':'Simulated task and cover for layout checks only. No real printer access; cleared on restart.',
+'演示序列号':'Demo serial numbers','模拟数据 · 固定不更新':'Simulated data · fixed snapshot',
+'添加打印机时，序列号填入 ;;tex_1（空闲）、;;tex_2（打印中）、;;tex_3（已完成）或 ;;tex_4（出错）。无需云端凭据；作为普通打印机保存、轮转并加入总览，数据固定不更新。最多同时添加 3 台，可移除后更换状态。真实序列号仍需有效凭据。':'Add a printer with serial ;;tex_1 (idle), ;;tex_2 (printing), ;;tex_3 (completed) or ;;tex_4 (error). No cloud credentials needed. Saved and included in rotation/overview like any printer, but never updated. Up to 3 at once; remove one to try another state. Real serials still require valid credentials.',
 '未保存 · 将自动保存':'Unsaved · automatic save pending','设置已保存 · 自动应用':'Saved · applied automatically','保存失败 · 修改仍保留，请重试':'Save failed · edits retained. Please retry.',
 '屏幕预览':'Screen preview','设备屏幕实时画面':'Live device display','当前画面':'Current view','预览卡片':'Preview card','切换设备画面':'Show on device','刷新预览':'Refresh preview','恢复轮转':'Resume rotation',
 '正在连接预览…':'Connecting to preview…','预览画面无效':'Invalid preview frame','请重新读取设备配置':'Read device settings again','无法读取设备画面':'Cannot read device display',
@@ -88,11 +119,33 @@ function applyLanguage(){
     const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
     while(walker.nextNode()){
         const node=walker.currentNode,parent=node.parentElement;
-        if(!parent||parent.closest('script,style,#printerList,#status,#identity,#health,#networks,#previewStatus,#previewCard'))continue;
+        if(!parent||parent.closest('script,style,[data-no-i18n],#printerList,#status,#identity,#health,#networks,#previewStatus,#previewCard,#languageStatus'))continue;
         if(!staticText.has(node))staticText.set(node,node.nodeValue);
         const original=staticText.get(node),trimmed=original.trim();
         node.nodeValue=original.replace(trimmed,t(trimmed));
     }
     const nav=document.querySelector('nav');if(nav)nav.setAttribute('aria-label',t('设置导航'));
+    for(const element of document.querySelectorAll('[data-i18n]'))element.textContent=t(element.dataset.i18n);
+    const preview=document.getElementById('screenPreview');if(preview)preview.setAttribute('aria-label',t('设备屏幕实时画面'));
+}
+function labelText(parent,text){const span=document.createElement('span');span.dataset.i18n=text;span.textContent=t(text);parent.append(span);return span;}
+function translatedText(element,text){element.dataset.i18n=text;element.textContent=t(text);}
+function languageStatus(text,retry=false){const status=document.getElementById('languageStatus');status.textContent=t(text);status.dataset.state=retry?'error':'ready';document.getElementById('languageRetry').hidden=!retry;}
+// No complete form submission: invalid/unfinished inputs must never prevent
+// changing language, and this request cannot alter names, secrets or Wi-Fi.
+async function saveDeviceLanguage(wanted){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+    try{
+        const info=await fetch('/api/info',{cache:'no-store',signal:controller.signal});
+        if(!info.ok)throw Error(t('网页已切换，小屏尚未同步，请重试'));
+        const before=await info.json();
+        if(!Number.isInteger(before.revision)||before.revision<0)throw Error(t('语言响应无效'));
+        const response=await fetch('/api/language',{method:'POST',cache:'no-store',signal:controller.signal,
+            headers:{'Content-Type':'application/json','X-XH-Language':'1','X-Lingxi-LAN':'1'},body:JSON.stringify({revision:before.revision,language:wanted})});
+        if(!response.ok){const e=Error(t(response.status===409?'设备配置已变化，语言未同步。请重试；其他修改仍保留。':'网页已切换，小屏尚未同步，请重试'));e.conflict=response.status===409;throw e;}
+        const result=await response.json();
+        if(!Number.isInteger(result.revision)||result.revision<before.revision||result.language!==wanted)throw Error(t('语言响应无效'));
+        return {...result,previousRevision:before.revision};
+    }finally{clearTimeout(timer);}
 }
 function setupAppearance(){const select=document.getElementById('appearance');if(!select)return;select.onchange=()=>{if(select.value==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',select.value);};}

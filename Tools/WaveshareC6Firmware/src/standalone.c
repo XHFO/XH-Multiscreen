@@ -1,5 +1,6 @@
 #include "standalone.h"
 #include "local_state.h"
+#include "form_demo.h"
 #include "nvs.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -265,8 +266,8 @@ static bool parse(cJSON *j,standalone_config_t *out,const standalone_config_t *p
         if(cJSON_HasObjectItem(e,"show_layers")&&!boolean(e,"show_layers",&p->show_layers))return false;
         if(cJSON_HasObjectItem(e,"show_material")&&!boolean(e,"show_material",&p->show_material))return false;
         if(p->source_formlabs){
-            if(!*p->serial||strspn(p->serial,"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")!=strlen(p->serial))return false;
-            if(!string(e,"form_client_id",p->form_client_id,sizeof(p->form_client_id)))return false;
+            if(!c6_form_is_demo(p)&&(!*p->serial||strspn(p->serial,"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")!=strlen(p->serial)))return false;
+            if((!c6_form_is_demo(p)||cJSON_HasObjectItem(e,"form_client_id"))&&!string(e,"form_client_id",p->form_client_id,sizeof(p->form_client_id)))return false;
             if(cJSON_HasObjectItem(e,"form_client_secret")&&!string(e,"form_client_secret",p->form_client_secret,sizeof(p->form_client_secret)))return false;
             if(!*p->form_client_secret&&previous)for(unsigned k=0;k<previous->printer_count;k++){
                 const c6_printer_config_t *old=&previous->printers[k];
@@ -309,9 +310,10 @@ static bool parse(cJSON *j,standalone_config_t *out,const standalone_config_t *p
         // subscribe to entities belonging to a different brand/data source.
         if(p->source_ha||p->source_formlabs){memset(p->access_code,0,sizeof(p->access_code));memset(p->certificate,0,sizeof(p->certificate));memset(p->host,0,sizeof(p->host));p->trust_lan=false;}
         if(!p->source_formlabs){memset(p->form_client_id,0,sizeof(p->form_client_id));memset(p->form_client_secret,0,sizeof(p->form_client_secret));}
+        if(c6_form_is_demo(p)){memset(p->form_client_id,0,sizeof(p->form_client_id));memset(p->form_client_secret,0,sizeof(p->form_client_secret));}
         if(!p->source_ha){p->status_entity[0]=p->progress_entity[0]=p->task_entity[0]=p->remaining_entity[0]=p->image_entity[0]=p->task_cover_entity[0]=0;p->nozzle_entity[0]=p->bed_entity[0]=p->error_entity[0]=p->end_time_entity[0]=0;}
         if(p->enabled) {
-            if(p->source_formlabs){if(!*p->form_client_id||!*p->form_client_secret)return false;}
+            if(p->source_formlabs){if(!c6_form_is_demo(p)&&(!*p->form_client_id||!*p->form_client_secret))return false;}
             else if(p->source_ha){if(!out->ha_enabled||!identifier(p->status_entity,true))return false;const char *ids[]={p->progress_entity,p->task_entity,p->remaining_entity};for(unsigned k=0;k<3;k++)if(*ids[k]&&!identifier(ids[k],true))return false;}
             else if(!c6_private_ip(p->host)||!identifier(p->serial,false)||!*p->access_code||(!p->trust_lan&&!*p->certificate))return false;
         }

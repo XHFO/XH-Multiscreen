@@ -137,8 +137,8 @@ static void menu_build(void){
         break;
     case C6_MENU_ENTITY:{menu_title="实体详情";int found=-1;for(unsigned i=0;i<standalone_config.entity_count;i++)if(!strcmp(menu_entity_id,standalone_config.entities[i].id))found=i;
         if(found<0){menu_add("实体已移除","");break;}const c6_entity_state_t *e=&s->entities[found];menu_add("名称",standalone_config.entities[found].name);snprintf(value,sizeof(value),"%s %s",e->state,e->unit);menu_add(e->available?"状态":"状态 · 不可用",value);snprintf(value,sizeof(value),"%llu 秒前",(unsigned long long)(e->updated?c6_seconds()-e->updated:0));menu_add("数据更新",e->updated?value:"尚未获取");break;}
-    case C6_MENU_PRINTER:{menu_title="打印机详情";int i=menu_printer_index();if(i<0){menu_add("打印机已移除或未同步","请在 Mac 同步显示设置");break;}
-        c6_printer_config_t *c=&standalone_config.printers[i];const c6_printer_state_t *v=&s->printers[i];menu_title=c->name;
+    case C6_MENU_PRINTER:{menu_title=local_label("打印机详情");int i=menu_printer_index();if(i<0){menu_add("打印机已移除或未同步",C6_FORMLABS_ONLY?"请在网页添加打印机":"请在 Mac 同步显示设置");break;}
+        c6_printer_config_t *c=&standalone_config.printers[i];const c6_printer_state_t *v=&s->printers[i];menu_title=*c->name?c->name:c->serial;
         if(*v->task){menu_add_raw(local_label("任务名称"),v->task);}
         if(*v->status){menu_add_raw(local_label("打印状态"),local_label(c6_renderer_print_status(v->status)));}
         if(v->progress_valid){snprintf(value,sizeof(value),"%d%%",v->progress);menu_add("打印进度",value);}

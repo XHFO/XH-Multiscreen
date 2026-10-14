@@ -26,7 +26,7 @@ typedef struct {
     // 0 waiting, 1 cached, 2 unsupported format, 3 oversized, 4 fetch/decode error.
     unsigned thumbnail_status[C6_MAX_PRINTERS];
     uint32_t thumbnail_revision[C6_MAX_PRINTERS];
-    // 0 waiting, 1 connected, 2 retrying, 3 credentials rejected, 4 low memory.
+    // 0 waiting, 1 connected, 2 retrying, 3 credentials rejected, 4 low memory, 5 fixed demo.
     unsigned form_phase[C6_MAX_PRINTERS];
     unsigned media_status[C6_MAX_ENTITIES+C6_MAX_PRINTERS];
     uint32_t media_revision[C6_MAX_ENTITIES+C6_MAX_PRINTERS];

@@ -54,7 +54,7 @@ typedef struct {
 #if C6_FORMLABS_ONLY
     int card_style;
     unsigned remaining_seconds;
-    bool remaining_available,progress_available;
+    bool remaining_available,progress_available,demo;
 #endif
 } c6_render_printer_t;
 #if C6_FORMLABS_ONLY
@@ -62,7 +62,7 @@ typedef struct {
 typedef struct {
     const char *name,*status;
     int progress;
-    bool enabled,connected,progress_available;
+    bool enabled,connected,progress_available,demo;
 } c6_render_printer_summary_t;
 void c6_renderer_printer_overview(c6_renderer_t *,const c6_render_printer_summary_t *,unsigned);
 #endif
@@ -88,6 +88,9 @@ typedef struct {const char *label,*value;} c6_render_menu_row_t;
 void c6_renderer_menu(c6_renderer_t *,const char *title,const c6_render_menu_row_t *,unsigned count,unsigned selected,const char *footer,const c6_render_style_t *);
 void c6_renderer_pairing(c6_renderer_t *,const char *pin,int seconds,const c6_render_style_t *);
 bool c6_renderer_qr(c6_renderer_t *,const char *url,const char *address,const c6_render_style_t *);
+#if C6_FORMLABS_ONLY
+bool c6_renderer_setup_qr(c6_renderer_t *,const char *payload,const char *title,const char *address,const char *footer,const c6_render_style_t *);
+#endif
 void c6_renderer_label(c6_renderer_t *,const char *text,int x,int baseline,unsigned size,int max_width,uint32_t color);
 // Calibration is applied once to a newly rendered canonical RGB565 frame.
 void c6_renderer_calibrate(c6_renderer_t *,int saturation_percent,int contrast_percent);

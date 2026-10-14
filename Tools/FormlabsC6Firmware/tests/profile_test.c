@@ -4,6 +4,7 @@
 #undef main
 #include "../../WaveshareC6Firmware/src/form_auth_cache.h"
 #include "../../WaveshareC6Firmware/src/formlabs_source.h"
+#include "../../WaveshareC6Firmware/src/source_budget.h"
 static standalone_config_t fixture(void){
     standalone_config_t c=standalone_config;c.printer_count=3;c.weather=true;
     for(unsigned i=0;i<3;i++){
@@ -93,6 +94,35 @@ int main(void){
     }
     assert(strcmp(states[0].thumbnail_key,states[1].thumbnail_key)&&strcmp(states[1].thumbnail_key,states[2].thumbnail_key));
     cJSON *wrong=cJSON_Parse("{\"serial\":\"FORM_2\",\"status\":\"finished\"}");assert(!c6_formlabs_update(&states[0],wrong,"FORM_0",200,pictures[0],1536));cJSON_Delete(wrong);assert(states[0].progress==10&&states[1].progress==20);
-    puts("Formlabs-only profile: bilingual persistence/legacy/rejection/rollback/CAS, defaults, 3 devices, isolation, secrets, auth reuse passed");
+    // Exact serial fixtures share ordinary slots/NVS/config. No credentials,
+    // no remote worker and no timestamp-driven motion in a fixed snapshot.
+    for(unsigned id=1;id<=4;id++){
+        standalone_config_t demo=fixture();demo.printer_count=1;
+        snprintf(demo.printers[0].serial,40,";;tex_%u",id);
+        req=write_document(&demo,true);assert(req.status==200);
+        assert(!*standalone_config.printers[0].form_client_id&&!*standalone_config.printers[0].form_client_secret);
+        assert(!c6_source_needed(&standalone_config,C6_WORK_FORM));
+        c6_printer_state_t a,b;assert(c6_form_demo_seed(&standalone_config.printers[0],&a));
+        assert(c6_form_demo_seed(&standalone_config.printers[0],&b)&&!memcmp(&a,&b,sizeof(a)));
+        assert(a.connected&&a.known&&!a.updated&&!a.end_epoch&&!a.remaining_updated&&!*a.thumbnail_key);
+        const char *status[]={"idle","printing","finished","failed"};assert(!strcmp(a.status,status[id-1]));
+        if(id==1)assert(!a.progress_valid&&!a.remaining_valid);
+        if(id==2)assert(a.progress==74&&a.remaining==42&&a.layer==888);
+        if(id==3)assert(a.progress==100&&a.completed_at);
+        if(id==4)assert(a.progress==32&&*a.error&&!a.remaining_valid);
+        char *encoded=config_json_encode(&standalone_config,true,NULL,NULL);cJSON *j=cJSON_Parse(encoded);free(encoded);
+        cJSON_DeleteItemFromObject(cJSON_GetArrayItem(cJSON_GetObjectItem(j,"printers"),0),"form_client_id");
+        assert(parse(j,&parsed,NULL)&&!strcmp(parsed.printers[0].serial,demo.printers[0].serial));cJSON_Delete(j);
+        demo=standalone_config;demo.printers[0].enabled=false;c6_form_demo_seed(&demo.printers[0],&a);assert(!a.connected);
+    }
+    const char *bad[]={";;tex_0",";;tex_5",";;tex_12",";;tex_1x",";;TEX_1"," ;;tex_1",";;tex_1 "};
+    for(unsigned i=0;i<sizeof(bad)/sizeof(*bad);i++){standalone_config_t demo=standalone_config;snprintf(demo.printers[0].serial,40,"%s",bad[i]);req=write_document(&demo,false);assert(req.status==400);}
+    standalone_config_t real=standalone_config;strcpy(real.printers[0].serial,"REAL_PRINTER");req=write_document(&real,false);assert(req.status==400);
+    strcpy(real.printers[0].form_client_id,"real-account");strcpy(real.printers[0].form_client_secret,"fixture-only");req=write_document(&real,true);assert(req.status==200&&c6_source_needed(&standalone_config,C6_WORK_FORM));
+    c6_printer_state_t untouched={.progress=23},before=untouched;assert(!c6_form_demo_seed(&standalone_config.printers[0],&untouched)&&!memcmp(&before,&untouched,sizeof(before)));
+    standalone_config_t mixed=fixture();strcpy(mixed.printers[0].serial,";;tex_2");strcpy(mixed.printers[1].serial,";;tex_3");req=write_document(&mixed,true);assert(req.status==200&&c6_source_needed(&standalone_config,C6_WORK_FORM));
+    mixed=standalone_config;c6_printer_config_t swap=mixed.printers[0];mixed.printers[0]=mixed.printers[2];mixed.printers[2]=swap;req=write_document(&mixed,false);assert(req.status==200&&!strcmp(standalone_config.printers[0].form_client_secret,"fixture-secret-2")&&c6_form_is_demo(&standalone_config.printers[2]));
+    mixed=standalone_config;mixed.printers[1]=mixed.printers[2];req=write_document(&mixed,false);assert(req.status==400);
+    puts("Formlabs profile: 4 exact static demos, normal config/restore/reorder, no credentials/cloud polling, malformed-code rejection and real-device isolation passed");
     return 0;
 }

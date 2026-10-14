@@ -54,11 +54,14 @@ static httpd_handle_t http_server;
 static bool native_clock, display_rotated;
 #if C6_FORMLABS_ONLY
 #include "terminal_display_policy.h"
+#include "captive_dns.h"
+static esp_netif_t *setup_ap;
+static bool terminal_guide_qr,terminal_guide_offered,terminal_guide_empty;
+static bool setup_notice_drawn,setup_qr_web;
 static int terminal_rotation;
 static bool terminal_asleep,terminal_manual_override;
 static uint64_t terminal_last_activity;
 static int terminal_preview_page=-1;
-static bool terminal_demo_active;
 static int64_t terminal_preview_until;
 #endif
 static uint32_t clock_epoch, last_clock_second;
@@ -117,6 +120,7 @@ static void set_brightness(int level) {
     frame_generation++; // Invalidate an unchanged local card after display controls.
     int effective=standalone_pairing_brightness(level,pairing_visible||device_menu.depth);
 #if C6_FORMLABS_ONLY
+    if(network_notice||setup_notice_drawn)effective=standalone_pairing_brightness(level,true);
     if(terminal_asleep)effective=0;
 #endif
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 1023 * effective / 100);
@@ -222,7 +226,6 @@ static unsigned local_pages(unsigned *pages,const c6_source_snapshot_t *s) {
     for(unsigned i=0;i<standalone_config.printer_count;i++)if(standalone_config.printers[i].enabled&&standalone_config.printers[i].rotate&&(C6_FORMLABS_ONLY||c6_print_eligible(&s->printers[i],c6_seconds())))pages[count++]=20+i;
 #if C6_FORMLABS_ONLY
     if(terminal_overview_available(standalone_config.printer_count))pages[count++]=TERMINAL_OVERVIEW_PAGE;
-    if(terminal_demo_active)pages[count++]=30;
 #endif
     return count;
 }
@@ -277,16 +280,50 @@ static void local_display(void *arg) {
     int64_t now=esp_timer_get_time();
     if(__atomic_exchange_n(&station_joined_pending,false,__ATOMIC_RELAXED)){
         wifi_mode_t mode;if(esp_wifi_get_mode(&mode)==ESP_OK&&mode==WIFI_MODE_APSTA){
-            hotspot_close_at=now+5000000;network_notice=true;network_notice_drawn=false;native_clock=false;revision=0;
+            hotspot_close_at=now+(C6_FORMLABS_ONLY?12000000:5000000);network_notice=true;network_notice_drawn=false;native_clock=false;revision=0;
         }
+#if C6_FORMLABS_ONLY
+        if(!terminal_guide_offered&&standalone_config.printer_count==0&&!standalone_config.weather){network_notice=true;network_notice_drawn=false;native_clock=false;revision=0;}
+        terminal_guide_offered=true;terminal_guide_qr=true;terminal_guide_empty=standalone_config.printer_count==0&&!standalone_config.weather;setup_notice_drawn=false;
+        network_notice_drawn=false; // A DHCP address change must refresh the QR.
+#endif
     }
     if(hotspot_close_at&&now>=hotspot_close_at){
         if(!__atomic_load_n(&station_offline,__ATOMIC_RELAXED)&&esp_wifi_set_mode(WIFI_MODE_STA)==ESP_OK){hotspot_close_at=0;printf("LINGXI_SETUP_AP=closed\n");}
         else hotspot_close_at=now+5000000;
     }
+#if C6_FORMLABS_ONLY
+    if(network_notice&&terminal_guide_empty&&(standalone_config.printer_count>0||standalone_config.weather)){network_notice=false;network_notice_drawn=false;last_clock_second=UINT32_MAX;set_brightness(brightness);}
+    wifi_mode_t guide_mode=WIFI_MODE_NULL;esp_wifi_get_mode(&guide_mode);
+    if(device_menu.depth)setup_notice_drawn=false;
+    if(guide_mode==WIFI_MODE_APSTA&&(!__atomic_load_n(&station_has_credentials,__ATOMIC_RELAXED)||__atomic_load_n(&station_offline,__ATOMIC_RELAXED))&&!device_menu.depth){
+        if(!setup_notice_drawn){
+            char ssid[40];wifi_config_t ap={0};esp_wifi_get_config(WIFI_IF_AP,&ap);snprintf(ssid,sizeof(ssid),"%s",ap.ap.ssid);
+            char payload[80];snprintf(payload,sizeof(payload),"WIFI:T:nopass;S:%s;;",ssid);
+            c6_render_style_t style=local_style();
+            c6_renderer_setup_qr(renderer(),setup_qr_web?"http://192.168.4.1/":payload,setup_qr_web?"打开配网后台":"扫码连接热点",setup_qr_web?"192.168.4.1":ssid,"单击切换二维码 · 长按设置",&style);
+            setup_notice_drawn=true;set_brightness(brightness);calibrated_display();
+        }return;
+    }
+#endif
     if(network_notice&&!device_menu.depth){
+#if C6_FORMLABS_ONLY
+        // Never leave a stale LAN QR on screen while Wi-Fi is disconnected.
+        if(__atomic_load_n(&station_offline,__ATOMIC_RELAXED)||!strcmp(ip,"0.0.0.0")){
+            if(network_notice_drawn){c6_render_menu_row_t rows[]={{local_label("尚未连接局域网"),local_label("连接同一 Wi-Fi")}};c6_render_style_t style=local_style();c6_renderer_menu(renderer(),local_label("网络"),rows,1,1,local_label("长按 BOOT 打开设置"),&style);calibrated_display();network_notice_drawn=false;}
+            return;
+        }
+        if(!network_notice_drawn){
+            c6_render_style_t style=local_style();
+            if(terminal_guide_qr){char url[80];snprintf(url,sizeof(url),"http://%s/standalone#printers",ip);c6_renderer_setup_qr(renderer(),url,"联网成功 · 扫码设置",ip,"先切回同一 Wi-Fi · 单击指引",&style);}
+            else{c6_render_menu_row_t rows[]={{local_label("1 手机切回同一 Wi-Fi"),ip},{local_label("2 扫码打开设备设置"),local_label("配置热点即将关闭")},{local_label("3 配置打印机与天气"),local_label("在后台填写设备信息")}};
+                c6_renderer_menu(renderer(),local_label("联网成功 · 接着配置"),rows,3,3,local_label("单击扫码 · 双击稍后配置"),&style);}
+            set_brightness(brightness);calibrated_display();network_notice_drawn=true;
+        }return;
+#else
         if(!network_notice_drawn){c6_render_style_t style=local_style();c6_render_menu_row_t rows[]={{local_label("局域网 IP 地址"),ip},{local_label("网页详细配置"),local_label("手机连接同一 Wi-Fi 后扫码")},{local_label("配置热点"),local_label("联网成功后自动关闭")}};
             c6_renderer_menu(renderer(),local_label("Wi-Fi 已连接"),rows,3,3,local_label("单击继续 · 长按设备设置"),&style);set_brightness(brightness);calibrated_display();network_notice_drawn=true;}return;
+#endif
     }
     if(menu_draft.dirty&&device_menu.depth&&now/1000-device_menu.touched>=30000&&device_menu.levels[0].view!=C6_MENU_SETTINGS&&!menu_save_draft()){device_menu.touched=now/1000;}
     if(c6_menu_timeout(&device_menu,now/1000))menu_return_to_card();
@@ -330,7 +367,6 @@ static void local_display(void *arg) {
     if(page==2){native_clock=false;draw_weather(sources);return;}
 #if C6_FORMLABS_ONLY
     if(page==TERMINAL_OVERVIEW_PAGE){native_clock=false;draw_printer_overview(sources);return;}
-    if(page==30){native_clock=false;c6_sources_media_focus(-1,-1);draw_demo_printer();return;}
 #endif
     if(page>=20){native_clock=false;draw_printer(page-20,sources);return;}
     if(page>=10){native_clock=false;draw_entity(page-10,sources);return;}
@@ -421,10 +457,10 @@ static void terminal_wake(bool manual){
 }
 static bool terminal_sleep_tick(void){
     bool printing=false;const c6_source_snapshot_t *s=display_sources();
-    for(unsigned i=0;i<standalone_config.printer_count;i++)if(standalone_config.printers[i].enabled&&s->printers[i].connected&&c6_print_active(s->printers[i].status))printing=true;
+    for(unsigned i=0;i<standalone_config.printer_count;i++)if(standalone_config.printers[i].enabled&&!c6_form_is_demo(&standalone_config.printers[i])&&s->printers[i].connected&&c6_print_active(s->printers[i].status))printing=true;
     time_t utc=time(NULL);int minute=-1;if(utc>=1609459200){time_t local=utc+standalone_config.timezone;struct tm t;gmtime_r(&local,&t);minute=t.tm_hour*60+t.tm_min;}
     bool asleep=terminal_should_sleep(standalone_config.sleep_mode,standalone_config.sleep_idle_minutes,standalone_config.sleep_start,standalone_config.sleep_end,
-        standalone_config.sleep_keep_printing,printing,device_menu.depth!=0||__atomic_load_n(&station_joined_pending,__ATOMIC_RELAXED)||hotspot_close_at!=0,c6_seconds(),terminal_last_activity,terminal_manual_override,minute);
+        standalone_config.sleep_keep_printing,printing,device_menu.depth!=0||network_notice||setup_notice_drawn||__atomic_load_n(&station_joined_pending,__ATOMIC_RELAXED)||hotspot_close_at!=0,c6_seconds(),terminal_last_activity,terminal_manual_override,minute);
     if(asleep!=terminal_asleep){terminal_asleep=asleep;set_brightness(brightness);last_clock_second=UINT32_MAX;page_since=0;}
     return asleep;
 }
@@ -435,13 +471,11 @@ static esp_err_t terminal_view_handler(httpd_req_t *req){
     if(req->content_len||httpd_req_get_url_query_str(req,query,sizeof(query))!=ESP_OK||httpd_query_key_value(query,"card",card,sizeof(card))!=ESP_OK)return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"Invalid view");
     if(!strcmp(card,"clock")&&standalone_config.clock)page=0;
     else if(!strcmp(card,"overview")&&terminal_overview_available(standalone_config.printer_count))page=TERMINAL_OVERVIEW_PAGE;
-    else if(!strcmp(card,"demo")){terminal_demo_active=true;page=30;}
-    else if(!strcmp(card,"demo_off")){terminal_demo_active=false;page=-1;}
     else if(!strcmp(card,"weather")&&standalone_config.weather)page=2;
     else if(!strcmp(card,"printer")&&httpd_query_key_value(query,"index",index,sizeof(index))==ESP_OK&&strlen(index)==1&&index[0]>='0'&&index[0]<='2'){
         unsigned i=index[0]-'0';if(i<standalone_config.printer_count&&standalone_config.printers[i].enabled)page=20+(int)i;
     }else if(!strcmp(card,"auto"))page=-1;
-    if(page<0&&strcmp(card,"auto")&&strcmp(card,"demo_off")){httpd_resp_set_status(req,"409 Conflict");return httpd_resp_sendstr(req,"Card is not configured");}
+    if(page<0&&strcmp(card,"auto")){httpd_resp_set_status(req,"409 Conflict");return httpd_resp_sendstr(req,"Card is not configured");}
     terminal_wake(true);terminal_preview_page=page;terminal_preview_until=esp_timer_get_time()+90000000;
     network_notice=false;network_notice_drawn=false;last_clock_second=UINT32_MAX;page_since=0;local_page=0;frame_generation++;
     local_display(NULL);httpd_resp_set_type(req,"application/json");return httpd_resp_sendstr(req,"{\"ok\":true,\"hold_seconds\":90}");
@@ -455,8 +489,21 @@ static void local_display_work(void *arg){
 #if C6_FORMLABS_ONLY
             bool waking=terminal_asleep;terminal_wake(true);terminal_preview_page=-1;
             if(waking)continue; // First gesture wakes only; never toggles a setting.
+            wifi_mode_t mode=WIFI_MODE_NULL;esp_wifi_get_mode(&mode);
+            if(!device_menu.depth&&mode==WIFI_MODE_APSTA&&(!__atomic_load_n(&station_has_credentials,__ATOMIC_RELAXED)||__atomic_load_n(&station_offline,__ATOMIC_RELAXED))&&gesture.event==C6_BUTTON_SINGLE){setup_qr_web=!setup_qr_web;setup_notice_drawn=false;view_revision++;continue;}
 #endif
-            if(network_notice){network_notice=false;network_notice_drawn=false;revision=0;last_clock_second=UINT32_MAX;page_since=0;view_revision++;if(gesture.event==C6_BUTTON_SINGLE)continue;}
+            if(network_notice){
+#if C6_FORMLABS_ONLY
+                if(gesture.event==C6_BUTTON_SINGLE){terminal_guide_qr=!terminal_guide_qr;network_notice_drawn=false;view_revision++;continue;}
+#endif
+                network_notice=false;network_notice_drawn=false;revision=0;last_clock_second=UINT32_MAX;page_since=0;view_revision++;
+#if C6_FORMLABS_ONLY
+                set_brightness(brightness);
+                if(gesture.event==C6_BUTTON_DOUBLE)continue;
+#else
+                if(gesture.event==C6_BUTTON_SINGLE)continue;
+#endif
+            }
             menu_gesture(gesture.event);
             // No PIN/SSID/credentials in diagnostics. Useful for real-button
             // verification without exposing a network gesture-injection API.
@@ -568,7 +615,11 @@ static bool reset_station_wifi(void){
     bool had=__atomic_exchange_n(&station_has_credentials,false,__ATOMIC_RELAXED);
     esp_wifi_disconnect();
     if(esp_wifi_set_config(WIFI_IF_STA,&empty)!=ESP_OK){__atomic_store_n(&station_has_credentials,had,__ATOMIC_RELAXED);if(had)esp_wifi_connect();return false;}
-    strcpy(ip,"0.0.0.0");__atomic_store_n(&station_offline,true,__ATOMIC_RELAXED);return esp_wifi_set_mode(WIFI_MODE_APSTA)==ESP_OK;
+    strcpy(ip,"0.0.0.0");__atomic_store_n(&station_offline,true,__ATOMIC_RELAXED);
+#if C6_FORMLABS_ONLY
+    terminal_guide_offered=false;setup_notice_drawn=false;setup_qr_web=false;network_notice=false;hotspot_close_at=0;
+#endif
+    return esp_wifi_set_mode(WIFI_MODE_APSTA)==ESP_OK;
 }
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START && __atomic_load_n(&station_has_credentials,__ATOMIC_RELAXED)) esp_wifi_connect();
@@ -631,9 +682,10 @@ static void import_wifi_provision(void) {
 static esp_err_t info_handler(httpd_req_t *req) {
     char json[1536];
 #if C6_FORMLABS_ONLY
+    wifi_mode_t setup_mode=WIFI_MODE_NULL;esp_wifi_get_mode(&setup_mode);
     snprintf(json,sizeof(json),"{\"device\":\"" C6_DEVICE_ID "\",\"fw\":\"" C6_FIRMWARE_VERSION "\",\"profile\":\"formlabs-only\",\"max_printers\":3,\"standalone_api\":{\"path\":\"/api/standalone\",\"schema_version\":2,\"ha\":false,\"bambu\":false,\"formlabs\":true,\"media\":true},\"pairing_api\":{\"path\":\"/api/pair\",\"pin_digits\":0,\"mode\":\"lan\"},\"rotation_api\":{\"path\":\"/api/rotation\",\"device_rendered\":true},\"rotation\":%d,\"ota_api\":\"/api/ota\",\"accepts_software\":false,\"hostname\":\"%s\",\"ip\":\"%s\",\"screen\":{\"width\":240,\"height\":240},\"mode\":\"%s\",\"brightness\":%d,\"clock_animation\":{\"target_fps\":30,\"duration_ms\":720,\"partial_refresh\":true}}",
         terminal_rotation,hostname,ip,device_menu.depth?"menu":"standalone",brightness);
-    size_t used=strlen(json);snprintf(json+used-1,sizeof(json)-used+1,",\"product_name\":\"XH Multiscreen\",\"model\":\"Form Monitor C6\",\"demo_active\":%s,\"language\":%d,\"asleep\":%s,\"rotation_steps\":[0,90,180,270],\"clock_metrics\":{\"last_fold_frames\":%u,\"last_fold_ms\":%u,\"max_render_display_us\":%u}}",terminal_demo_active?"true":"false",standalone_config.language,terminal_asleep?"true":"false",last_fold_frames,last_fold_ms,last_fold_max_us);
+    size_t used=strlen(json);snprintf(json+used-1,sizeof(json)-used+1,",\"product_name\":\"XH Multiscreen\",\"model\":\"Form Monitor C6\",\"revision\":%d,\"language\":%d,\"asleep\":%s,\"rotation_steps\":[0,90,180,270],\"wifi_connected\":%s,\"setup_ap\":%s,\"needs_printer_setup\":%s,\"setup_path\":\"/standalone#printers\",\"clock_metrics\":{\"last_fold_frames\":%u,\"last_fold_ms\":%u,\"max_render_display_us\":%u}}",standalone_config.revision,standalone_config.language,terminal_asleep?"true":"false",strcmp(ip,"0.0.0.0")?"true":"false",setup_mode==WIFI_MODE_APSTA?"true":"false",standalone_config.printer_count?"false":"true",last_fold_frames,last_fold_ms,last_fold_max_us);
 #else
     snprintf(json,sizeof(json),"{\"device\":\"lingxi-esp32-c6-screen\",\"fw\":\"2.0.0-alpha.16\",\"standalone_api\":{\"path\":\"/api/standalone\",\"schema_version\":2,\"ha\":true,\"bambu\":true,\"formlabs\":true,\"media\":true},\"pairing_api\":{\"path\":\"/api/pair\",\"pin_digits\":0,\"mode\":\"lan\"},\"rotation_api\":{\"path\":\"/api/rotation\",\"device_rendered\":true},\"rotation\":%d,\"ota_api\":\"/api/ota\",\"software_lease_api\":\"/api/software\",\"accepts_software\":%s,\"button_api\":\"/api/button\",\"native_clock_api\":{\"path\":\"/api/clock\",\"device_rendered\":true,\"supports_rotation\":true},\"hostname\":\"%s\",\"ip\":\"%s\",\"screen\":{\"width\":240,\"height\":240},\"mode\":\"%s\",\"brightness\":%d,\"image_api\":{\"frame_rev\":%lu},\"rgb565_api\":{\"path\":\"/image/rgb565\",\"content_type\":\"application/x-rgb565\",\"byte_order\":\"big-endian\",\"bytes\":115200}}",
         display_rotated?180:0,software_allowed()?"true":"false",hostname,ip,device_menu.depth?"menu":local_visible?"standalone":native_clock?"clock":revision?"external":"none",brightness,(unsigned long)revision);
@@ -692,11 +744,32 @@ static esp_err_t rotation_handler(httpd_req_t *req) {
 #else
 #include "wifi_portal.h"
 #endif
+// Captive discovery is confined to the physical setup AP. Never intercept LAN
+// 404s or return an Internet-success probe; no HTTPS interception.
+#if C6_FORMLABS_ONLY
+static bool setup_request(httpd_req_t *req){
+    wifi_mode_t mode;esp_netif_ip_info_t info;
+    if(esp_wifi_get_mode(&mode)!=ESP_OK||mode!=WIFI_MODE_APSTA||esp_netif_get_ip_info(setup_ap,&info)!=ESP_OK)return false;
+    struct sockaddr_storage peer={0},local={0};socklen_t size=sizeof(local);uint32_t local4,peer4;int fd=httpd_req_to_sockfd(req);
+    if(getsockname(fd,(struct sockaddr*)&local,&size)||!c6_sockaddr_ipv4(&local,size,&local4)||local4!=info.ip.addr)return false;
+    size=sizeof(peer);return !getpeername(fd,(struct sockaddr*)&peer,&size)&&c6_sockaddr_ipv4(&peer,size,&peer4)&&peer4!=info.ip.addr&&(peer4&info.netmask.addr)==(info.ip.addr&info.netmask.addr);
+}
+static esp_err_t captive_redirect(httpd_req_t *req,httpd_err_code_t error){
+    (void)error;if(req->method!=HTTP_GET||!setup_request(req))return httpd_resp_send_err(req,HTTPD_404_NOT_FOUND,"Not found");
+    httpd_resp_set_status(req,"302 Found");httpd_resp_set_hdr(req,"Location","http://192.168.4.1/");httpd_resp_set_hdr(req,"Cache-Control","no-store");return httpd_resp_sendstr(req,"Open http://192.168.4.1/ to configure Wi-Fi");
+}
+#endif
 static esp_err_t root_handler(httpd_req_t *req) {
+#if C6_FORMLABS_ONLY
+    char host[80];if(setup_request(req)&&(httpd_req_get_hdr_value_str(req,"Host",host,sizeof(host))!=ESP_OK||(strcmp(host,"192.168.4.1")&&strcmp(host,"192.168.4.1:80"))))return captive_redirect(req,HTTPD_404_NOT_FOUND);
+#endif
     httpd_resp_set_type(req,"text/html; charset=utf-8");
     httpd_resp_set_hdr(req,"Cache-Control","no-store");
     return httpd_resp_sendstr(req,portal);
 }
+#if C6_FORMLABS_ONLY
+#include "formlabs_language.h"
+#endif
 static int hex(char c) {
     if(c>='0'&&c<='9') return c-'0';
     if(c>='a'&&c<='f') return c-'a'+10;
@@ -716,6 +789,14 @@ static bool decode(char *s) {
     *out=0;return true;
 }
 static esp_err_t wifi_handler(httpd_req_t *req) {
+#if C6_FORMLABS_ONLY
+    char header[96],host[80],origin[96],expected[96];
+    if(httpd_req_get_hdr_value_str(req,"X-XH-WiFi",header,sizeof(header))!=ESP_OK||strcmp(header,"1")||httpd_req_get_hdr_value_str(req,"Host",host,sizeof(host))!=ESP_OK)return httpd_resp_send_err(req,HTTPD_403_FORBIDDEN,"Open the device Wi-Fi page first");
+    snprintf(expected,sizeof(expected),"http://%s",host);
+    if(httpd_req_get_hdr_value_str(req,"Origin",origin,sizeof(origin))==ESP_OK&&strcmp(origin,expected))return httpd_resp_send_err(req,HTTPD_403_FORBIDDEN,"Same-origin Wi-Fi configuration required");
+    char *port=strchr(host,':');if(port){if(strcmp(port,":80"))return httpd_resp_send_err(req,HTTPD_403_FORBIDDEN,"Invalid host");*port=0;}
+    if(strcmp(host,setup_request(req)?"192.168.4.1":ip))return httpd_resp_send_err(req,HTTPD_403_FORBIDDEN,"Invalid device host");
+#endif
     char body[384],ssid[128],password[256];
     if(req->content_len<=0||req->content_len>=sizeof(body))return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"Invalid form");
     int count=0;
@@ -743,7 +824,12 @@ void app_main(void) {
     gesture_queue=xQueueCreate(8,sizeof(c6_queued_gesture_t));if(!gesture_queue)abort();
     xTaskCreate(button_task,"boot_button",2048,NULL,5,NULL);
     ESP_ERROR_CHECK(esp_netif_init());ESP_ERROR_CHECK(esp_event_loop_create_default());
-    station=esp_netif_create_default_wifi_sta();esp_netif_create_default_wifi_ap();
+    station=esp_netif_create_default_wifi_sta();
+#if C6_FORMLABS_ONLY
+    setup_ap=esp_netif_create_default_wifi_ap();
+#else
+    esp_netif_create_default_wifi_ap();
+#endif
     wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();ESP_ERROR_CHECK(esp_wifi_init(&init));
     c6_wifi_scan_init();
     uint8_t mac[6];esp_read_mac(mac,ESP_MAC_WIFI_STA);
@@ -759,6 +845,9 @@ void app_main(void) {
     wifi_config_t saved={0};ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_STA,&saved));station_has_credentials=saved.sta.ssid[0]!=0;memset(&saved,0,sizeof(saved));
     if(station_has_credentials)ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+#if C6_FORMLABS_ONLY
+    c6_captive_dns_start(setup_ap);
+#endif
     xTaskCreate(reconnect_task,"wifi_reconnect",2048,NULL,3,NULL);
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);esp_sntp_setservername(0,"pool.ntp.org");esp_sntp_init();
     c6_sources_init();
@@ -779,11 +868,15 @@ void app_main(void) {
         {.uri="/api/frame",.method=HTTP_GET,.handler=preview_frame_handler},
 #if C6_FORMLABS_ONLY
         {.uri="/api/view",.method=HTTP_POST,.handler=terminal_view_handler},
+        {.uri="/api/language",.method=HTTP_POST,.handler=terminal_language_handler},
 #endif
         {.uri="/api/card",.method=HTTP_POST,.handler=native_card_handler},
         {.uri="/api/thumbnail",.method=HTTP_POST,.handler=c6_thumbnail_handler},
         {.uri="/image/rgb565",.method=HTTP_POST,.handler=frame_handler}};
     for(size_t i=0;i<sizeof(routes)/sizeof(routes[0]);i++)ESP_ERROR_CHECK(httpd_register_uri_handler(server,&routes[i]));
     standalone_register(server);
+#if C6_FORMLABS_ONLY
+    ESP_ERROR_CHECK(httpd_register_err_handler(server,HTTPD_404_NOT_FOUND,captive_redirect));
+#endif
     c6_register_updates(server);
 }

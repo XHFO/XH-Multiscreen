@@ -1,5 +1,6 @@
 #pragma once
 #include "standalone.h"
+#include "form_demo.h"
 #include <stddef.h>
 #include <string.h>
 enum { C6_WORK_HA, C6_WORK_MQTT, C6_WORK_FORM, C6_WORK_MEDIA };
@@ -12,7 +13,7 @@ static inline bool c6_source_needed(const standalone_config_t *c,unsigned work){
         const c6_printer_config_t *p=&c->printers[i];if(!p->enabled)continue;
         if(work==C6_WORK_HA&&c->ha_enabled&&p->source_ha)return true;
         if(work==C6_WORK_MQTT&&!p->source_ha&&!p->source_formlabs)return true;
-        if(work==C6_WORK_FORM&&p->source_formlabs)return true;
+        if(work==C6_WORK_FORM&&c6_form_pollable(p))return true;
         if(work==C6_WORK_MEDIA&&c->ha_enabled&&p->source_ha&&p->show_image&&(*p->image_entity||*p->task_cover_entity))return true;
     }
     return false;

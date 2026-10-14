@@ -7,13 +7,14 @@ const source=readFileSync(join(root,'Tools/WaveshareC6Firmware/src/local_render.
 const extract=(a,b)=>{const start=source.indexOf(a),end=source.indexOf(b,start);assert(start>=0&&end>start);return source.slice(start,end);};
 const hash=extract('static uint64_t weather_hash_bytes(uint64_t hash,const void *bytes,size_t count){','static uint64_t weather_visible_key(');
 const controls=extract('static uint64_t render_string_key(', 'static c6_render_style_t local_style(');
-const overview=extract('static void draw_printer_overview(', '// Runtime fixture only:');
+const overview=extract('static void draw_printer_overview(', '#endif\nstatic void draw_weather_content');
 const stage=mkdtempSync('/private/tmp/formlabs-overview-runtime.');
 const c=`
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include "local_sources.h"
+#include "form_demo.h"
 #include "c6_display_renderer.h"
 standalone_config_t standalone_config;
 static uint32_t frame_generation;static unsigned renders,presents;static int focus_entity,focus_printer;
@@ -47,6 +48,9 @@ int main(void){
   standalone_config.printer_count=2;draw_printer_overview(&sources);assert(renders==7&&captured_count==2);
   frame_generation++;draw_printer_overview(&sources);assert(renders==8);draw_printer_overview(&sources);assert(renders==8);
   standalone_config.language=1;draw_printer_overview(&sources);assert(renders==9);
+  standalone_config.printers[0].source_formlabs=true;strcpy(standalone_config.printers[0].serial,";;tex_2");draw_printer_overview(&sources);assert(renders==10&&captured[0].demo&&!captured[1].demo);
+  draw_printer_overview(&sources);assert(renders==10);
+  strcpy(standalone_config.printers[0].serial,"REAL_2");draw_printer_overview(&sources);assert(renders==11&&!captured[0].demo);
   puts("Actual overview runtime: borrowed rows, device names/isolation, disabled/unknown progress, no-op redraw suppression and display invalidation passed");
 }
 `;

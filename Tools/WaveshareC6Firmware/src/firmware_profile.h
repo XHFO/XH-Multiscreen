@@ -3,7 +3,7 @@
 #define C6_FORMLABS_ONLY 0
 #endif
 #if C6_FORMLABS_ONLY
-#define C6_FIRMWARE_VERSION "2.0.0-formlabs-alpha.9"
+#define C6_FIRMWARE_VERSION "2.0.0-formlabs-alpha.14"
 #define C6_WEATHER_NAMESPACE "form_weather"
 #define C6_WEATHER_EXTRA_FIELDS ",relative_humidity_2m,wind_speed_10m"
 #define C6_DEVICE_ID "lingxi-c6-formlabs-monitor"

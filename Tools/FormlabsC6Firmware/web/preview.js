@@ -5,7 +5,6 @@ function previewOptions(config){
     const select=$('previewCard'),previous=select.value;select.replaceChildren();
     function option(value,label){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o);}
     option('auto',t('当前画面'));if(config.clock)option('clock',t('翻页钟'));if(config.weather)option('weather',t('天气'));
-    option('demo',t('虚拟打印机（演示）'));
     if(config.printers.length>=2)option('overview',t('打印机总览'));
     config.printers.forEach((p,i)=>{if(p.enabled)option('printer:'+i,p.name||p.serial);});
     select.value=Array.from(select.options).some(o=>o.value===previous)?previous:'auto';
@@ -32,8 +31,8 @@ async function refreshPreview(force=false){
             const canvas=$('screenPreview'),context=canvas.getContext('2d');const data=context.createImageData(240,240);data.data.set(pixels);context.putImageData(data,0,0);
         }
         previewRevision=r.headers.get('X-Lingxi-Frame-Revision')||'';
-        $('previewStatus').textContent=t(r.headers.get('X-Lingxi-Asleep')==='1'?'设备已休眠 · 显示休眠前画面':'设备实际画面 · 每 3 秒刷新');
-    }catch(e){if(previewAlive)$('previewStatus').textContent=t('预览连接中断，保留最近画面');}
+        translatedText($('previewStatus'),r.headers.get('X-Lingxi-Asleep')==='1'?'设备已休眠 · 显示休眠前画面':'设备实际画面 · 每 3 秒刷新');
+    }catch(e){if(previewAlive)translatedText($('previewStatus'),'预览连接中断，保留最近画面');}
     finally{clearTimeout(timeout);previewAbort=null;previewBusy=false;}
 }
 async function showPreviewCard(card){
@@ -43,12 +42,11 @@ async function showPreviewCard(card){
     previewBusy=true;
     try{const r=await request('/api/view?'+query,{method:'POST',headers:{Authorization:'Bearer '+token}});
         if(!r.ok)throw Error(t(r.status===409?'请先退出设备设置，并确认卡片已保存启用':'无法切换设备画面'));
-        previewRevision='';if(card==='demo')$('demo').checked=true;if(card==='demo_off')$('demo').checked=false;
-    }catch(e){$('previewStatus').textContent=e.message;return false;}
+        previewRevision='';
+    }catch(e){translatedText($('previewStatus'),e.message);return false;}
     finally{previewBusy=false;}
     await refreshPreview(true);return true;
 }
-$('demo').onchange=async()=>{const enabled=$('demo').checked;$('demo').disabled=true;try{if(!await showPreviewCard(enabled?'demo':'demo_off'))$('demo').checked=!enabled;}finally{$('demo').disabled=false;}};
 $('previewShow').onclick=()=>showPreviewCard($('previewCard').value);
 $('previewAuto').onclick=()=>showPreviewCard('auto');$('previewRefresh').onclick=()=>refreshPreview(true);
 async function previewLoop(){await refreshPreview();if(previewAlive)previewTimer=setTimeout(previewLoop,3000);}

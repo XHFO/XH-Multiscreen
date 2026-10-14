@@ -1,6 +1,7 @@
 set(BASE "${CMAKE_CURRENT_LIST_DIR}/../../WaveshareC6Firmware/src")
 set(RENDER "${CMAKE_CURRENT_LIST_DIR}/../../../Sources/C6DisplayRenderer")
 idf_component_register(SRCS
+    "captive_dns.c"
     "${BASE}/main.c" "${BASE}/standalone.c" "${BASE}/local_state.c"
     "${BASE}/local_sources.c" "${BASE}/local_updates.c"
     "${BASE}/thumbnail_api.c" "${BASE}/thumbnail_cache.c"

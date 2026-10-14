@@ -13,10 +13,22 @@ static void terminal_clock(c6_renderer_t *,const c6_render_clock_t *);
 static void terminal_menu(c6_renderer_t *,const char *,const c6_render_menu_row_t *,unsigned,unsigned,const char *);
 static void terminal_weather(c6_renderer_t *,const c6_render_weather_t *);
 static void terminal_printer(c6_renderer_t *,const c6_render_printer_t *);
+static bool terminal_setup_qr(c6_renderer_t *,const char *,const char *,const char *,const char *);
 #endif
 
 static uint16_t color24(uint32_t c){return ((c>>8)&0xf800)|((c>>5)&0x7e0)|((c>>3)&31);}
-static void pixel(c6_renderer_t *r,int x,int y,uint16_t c){if(x<0||x>=240||y<0||y>=240)return;size_t i=(y*240+x)*2;r->frame[i]=c>>8;r->frame[i+1]=c;}
+#ifdef C6_RENDER_LAYOUT_TEST
+extern void c6_layout_test_pixel(int,int,uint16_t);
+extern void c6_layout_test_group(unsigned);
+extern void c6_layout_test_text(const char *,bool);
+#endif
+static void pixel(c6_renderer_t *r,int x,int y,uint16_t c){
+#ifdef C6_RENDER_LAYOUT_TEST
+    c6_layout_test_pixel(x,y,c);
+#endif
+    if(x<0||x>=240||y<0||y>=240)return;
+    size_t i=(y*240+x)*2;r->frame[i]=c>>8;r->frame[i+1]=c;
+}
 #include "terminal_pixel_font.h"
 #include "terminal_aero_digits.h"
 #include "terminal_language.h"
@@ -63,6 +75,9 @@ static int code_advance(unsigned code,unsigned size){
 int c6_renderer_text_width(const char *text,unsigned size){int width=0;if(!text)return 0;while(*text)width+=code_advance(next_code(&text),size);return width;}
 static void text_weight(c6_renderer_t *r,const char *s,int x,int baseline,unsigned size,int max_width,uint32_t color,bool bold){
     if(!s||!size)return;
+#if C6_FORMLABS_ONLY && defined(C6_RENDER_LAYOUT_TEST)
+    c6_layout_test_text(s,r->english);
+#endif
     int start=x;
     while(*s){unsigned code=next_code(&s);
 #if C6_FORMLABS_ONLY
@@ -170,15 +185,11 @@ void c6_renderer_menu(c6_renderer_t *r,const char *title,const c6_render_menu_ro
     label_lines(r,footer?footer:"单击切换 · 双击确认",16,209,12,12,208,1,true,legible_ink(c.secondary_text,c.card,c.primary_text),false);
 }
 #include "qrcodegen.h"
-bool c6_renderer_qr(c6_renderer_t *r,const char *url,const char *address,const c6_render_style_t *style){
+static bool labeled_qr(c6_renderer_t *r,const char *url,const char *title,const char *address,const char *footer,const c6_render_style_t *style){
     // Static scratch is safe: the framebuffer has one serialized display owner.
     static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(4)],scratch[qrcodegen_BUFFER_LEN_FOR_VERSION(4)];
     c6_render_style_t c=resolved_style(style);
-#if C6_FORMLABS_ONLY
-    c6_renderer_menu(r,c6_renderer_localized(r,"网页详细配置"),NULL,0,0,c6_renderer_localized(r,"手机连接同一 Wi-Fi · 长按返回"),&c);
-#else
-    c6_renderer_menu(r,"网页详细配置",NULL,0,0,"手机连接同一 Wi-Fi · 长按返回",&c);
-#endif
+    c6_renderer_menu(r,title,NULL,0,0,footer,&c);
     if(!qrcodegen_encodeText(url,scratch,qr,qrcodegen_Ecc_MEDIUM,1,4,qrcodegen_Mask_AUTO,true))return false;
     int size=qrcodegen_getSize(qr),scale=144/(size+8),edge=(size+8)*scale,x=(240-edge)/2,y=48+(144-edge)/2;
     // Four-module quiet zone, integer pixels, black/white regardless of theme.
@@ -186,6 +197,19 @@ bool c6_renderer_qr(c6_renderer_t *r,const char *url,const char *address,const c
     for(int yy=0;yy<size;yy++)for(int xx=0;xx<size;xx++)if(qrcodegen_getModule(qr,xx,yy))rect(r,x+(xx+4)*scale,y+(yy+4)*scale,scale,scale,0,0);
     label_lines(r,address,18,192,14,14,204,1,true,legible_ink(c.primary_text,c.card,c.primary_text),false);return true;
 }
+bool c6_renderer_qr(c6_renderer_t *r,const char *url,const char *address,const c6_render_style_t *style){
+#if C6_FORMLABS_ONLY
+    return labeled_qr(r,url,c6_renderer_localized(r,"网页详细配置"),address,c6_renderer_localized(r,"手机连接同一 Wi-Fi · 长按返回"),style);
+#else
+    return labeled_qr(r,url,"网页详细配置",address,"手机连接同一 Wi-Fi · 长按返回",style);
+#endif
+}
+#if C6_FORMLABS_ONLY
+bool c6_renderer_setup_qr(c6_renderer_t *r,const char *payload,const char *title,const char *address,const char *footer,const c6_render_style_t *style){
+    (void)style;
+    return terminal_setup_qr(r,payload,c6_renderer_localized(r,title),address,c6_renderer_localized(r,footer));
+}
+#endif
 void c6_renderer_pairing(c6_renderer_t *r,const char *pin,int seconds,const c6_render_style_t *style){
     c6_render_style_t c=resolved_style(style);
     c6_renderer_menu(r,"配对码",NULL,0,0,"仅限可信网络 · 长按返回",&c);
@@ -310,7 +334,13 @@ static void picture_box(c6_renderer_t *r,const c6_render_picture_t *p,int x,int 
             double sx=(xx-left)/scale,sy=(yy-top)/scale;
             if(sx>=0&&sy>=0&&sx<p->width&&sy<p->height)pixel(r,x+xx,y+yy,color24(picture_sample(p,(unsigned)(sx*256),(unsigned)(sy*256))));
         }
-    }else label_lines(r,"等待画面",x+4,y+h/2-5,10,8,w-8,1,true,colors->secondary_text,false);
+    }else{
+        const char *waiting="等待画面";
+#if C6_FORMLABS_ONLY
+        waiting=c6_renderer_localized(r,waiting);
+#endif
+        label_lines(r,waiting,x+4,y+h/2-5,10,8,w-8,1,true,colors->secondary_text,false);
+    }
     stroke_rect(r,x,y,w,h,radius,colors->border);
     if(label&&*label&&h>=30){int lw=c6_renderer_text_width(label,8)+12;if(lw<36)lw=36;if(lw>w-8)lw=w-8;
         rect(r,x+5,y+5,lw,16,7,colors->background);label_lines(r,label,x+5,y+8,8,8,lw,1,true,colors->primary_text,true);}

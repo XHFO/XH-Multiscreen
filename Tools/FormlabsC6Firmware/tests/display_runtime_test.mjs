@@ -16,12 +16,13 @@ const c=`
 #include <string.h>
 #include <time.h>
 #include "local_sources.h"
+#include "form_demo.h"
 #include "terminal_display_policy.h"
 standalone_config_t standalone_config;
-static int terminal_rotation,brightness=80;static bool terminal_asleep,terminal_manual_override,terminal_demo_active;
+static int terminal_rotation,brightness=80;static bool terminal_asleep,terminal_manual_override;
 static uint64_t terminal_last_activity,seconds=1;static int terminal_preview_page=-1;static int64_t terminal_preview_until;
 static struct {unsigned depth;} device_menu;static uint32_t frame_generation,last_clock_second;
-static int64_t page_since,hotspot_close_at;static unsigned local_page;static bool network_notice,network_notice_drawn,station_joined_pending;
+static int64_t page_since,hotspot_close_at;static unsigned local_page;static bool network_notice,network_notice_drawn,station_joined_pending,setup_notice_drawn;
 static c6_source_snapshot_t snapshot;static unsigned display_calls,brightness_calls;static int effective_brightness;
 static const c6_source_snapshot_t *display_sources(void){return &snapshot;}
 uint64_t c6_seconds(void){return seconds;}static int64_t esp_timer_get_time(void){return seconds*1000000;}
@@ -63,11 +64,13 @@ ${frameHandler}
 int main(void){
   unsigned playlist[12];
   for(unsigned n=0;n<=3;n++){
-    standalone_config.printer_count=n;terminal_demo_active=false;
+    standalone_config.printer_count=n;
     unsigned count=local_pages(playlist,&snapshot);assert(count==(n>=2?1:0));if(count)assert(playlist[0]==TERMINAL_OVERVIEW_PAGE);
-    terminal_demo_active=true;count=local_pages(playlist,&snapshot);assert(count==(n>=2?2:1));assert(playlist[count-1]==30);
+    for(unsigned i=0;i<n;i++){standalone_config.printers[i].enabled=standalone_config.printers[i].rotate=standalone_config.printers[i].source_formlabs=true;snprintf(standalone_config.printers[i].serial,40,";;tex_%u",i+1);}
+    count=local_pages(playlist,&snapshot);assert(count==n+(n>=2?1:0));for(unsigned i=0;i<n;i++)assert(playlist[i]==20+i);
+    memset(standalone_config.printers,0,sizeof(standalone_config.printers));
   }
-  terminal_demo_active=false;standalone_config.printer_count=2;standalone_config.printers[0].enabled=true;standalone_config.printers[0].rotate=true;
+  standalone_config.printer_count=2;standalone_config.printers[0].enabled=true;standalone_config.printers[0].rotate=true;
   assert(local_pages(playlist,&snapshot)==2&&playlist[0]==20&&playlist[1]==TERMINAL_OVERVIEW_PAGE);
   memset(&standalone_config,0,sizeof(standalone_config));
   for(unsigned i=0;i<57600;i++){frame[i*2]=i>>8;frame[i*2+1]=i&255;}
@@ -87,6 +90,8 @@ int main(void){
   device_menu.depth=1;assert(!terminal_sleep_tick());device_menu.depth=0;
   station_joined_pending=true;assert(!terminal_sleep_tick());station_joined_pending=false;
   hotspot_close_at=1;assert(!terminal_sleep_tick());hotspot_close_at=0;assert(terminal_sleep_tick());
+  network_notice=true;assert(!terminal_sleep_tick());network_notice=false;
+  setup_notice_drawn=true;assert(!terminal_sleep_tick());setup_notice_drawn=false;assert(terminal_sleep_tick());
   assert(terminal_should_sleep(2,1,1380,420,false,false,false,60,0,false,0));assert(!terminal_should_sleep(2,1,1380,420,false,false,false,60,60,true,0));assert(terminal_should_sleep(2,1,1380,420,false,false,false,120,60,true,0));
   standalone_config.clock=true;standalone_config.weather=true;
   httpd_req_t req={0};query="card=clock";terminal_view_handler(&req);assert(req.status==401&&display_calls==0);
@@ -99,9 +104,11 @@ int main(void){
   standalone_config.printer_count=1;
   query="card=weather";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==200&&terminal_preview_page==2);
   query="card=auto";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==200&&terminal_preview_page==-1);
-  query="card=demo";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==200&&terminal_preview_page==30&&terminal_demo_active);
-  assert(standalone_config.printer_count==1); // No fake source slot.
-  query="card=demo_off";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==200&&terminal_preview_page==-1&&!terminal_demo_active);
+  query="card=demo";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==409&&terminal_preview_page==-1);
+  query="card=demo_off";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==409&&terminal_preview_page==-1);
+  standalone_config.printers[0].source_formlabs=true;strcpy(standalone_config.printers[0].serial,";;tex_2");snapshot.printers[0].connected=true;strcpy(snapshot.printers[0].status,"printing");
+  standalone_config.sleep_mode=1;standalone_config.sleep_idle_minutes=1;standalone_config.sleep_keep_printing=true;seconds+=61;
+  assert(terminal_sleep_tick());query="card=printer&index=0";req=(httpd_req_t){.auth="fixture"};terminal_view_handler(&req);assert(req.status==200&&terminal_preview_page==20);
   frame_generation=123;terminal_rotation=270;terminal_asleep=true;query=NULL;req=(httpd_req_t){.auth="fixture"};preview_frame_handler(&req);
   assert(req.status==200&&received_revision==123&&received_rotation==270&&received_sleep==1&&received_bytes==FRAME_BYTES);
   query="rev=123";req=(httpd_req_t){.auth="fixture"};preview_frame_handler(&req);

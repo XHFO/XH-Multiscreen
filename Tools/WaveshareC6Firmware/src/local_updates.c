@@ -1,4 +1,5 @@
 #include "local_sources.h"
+#include "form_demo.h"
 #include "esp_ota_ops.h"
 #include "esp_app_desc.h"
 #include "esp_image_format.h"
@@ -61,7 +62,7 @@ static esp_err_t health_handler(httpd_req_t *req) {
     cJSON_AddBoolToObject(j,"snapshot_available",true);
     cJSON_AddStringToObject(j,"firmware",esp_app_get_description()->version);
     cJSON_AddNumberToObject(j,"boot_id",boot_id);
-    cJSON_AddBoolToObject(j,"weather_cached",s.weather.valid);
+    cJSON_AddBoolToObject(j,"weather_cached",s.weather.valid&&s.weather.latitude==standalone_config.latitude&&s.weather.longitude==standalone_config.longitude);
     const char *weather_phases[]={"disabled","waiting_wifi","waiting_memory","fetching","cached","retrying"};
     cJSON_AddStringToObject(j,"weather_phase",s.weather_phase<6?weather_phases[s.weather_phase]:"unknown");
     cJSON_AddStringToObject(j,"config_restore",standalone_restore_status);
@@ -82,7 +83,9 @@ static esp_err_t health_handler(httpd_req_t *req) {
         cJSON_AddStringToObject(p,"name",standalone_config.printers[i].name);cJSON_AddStringToObject(p,"serial",standalone_config.printers[i].serial);
         cJSON_AddStringToObject(p,"source",c6_printer_source(&standalone_config.printers[i]));
         cJSON_AddStringToObject(p,"status",s.printers[i].status);cJSON_AddNumberToObject(p,"progress",s.printers[i].progress);
-        if(standalone_config.printers[i].source_formlabs){const char *form_phases[]={"waiting","connected","retrying","auth_rejected","low_memory"};cJSON_AddStringToObject(p,"source","formlabs");cJSON_AddStringToObject(p,"phase",s.form_phase[i]<5?form_phases[s.form_phase[i]]:"unknown");}
+        cJSON_AddBoolToObject(p,"progress_valid",s.printers[i].progress_valid);
+        cJSON_AddBoolToObject(p,"demo",c6_form_is_demo(&standalone_config.printers[i]));
+        if(standalone_config.printers[i].source_formlabs){const char *form_phases[]={"waiting","connected","retrying","auth_rejected","low_memory","demo"};cJSON_AddStringToObject(p,"source","formlabs");cJSON_AddStringToObject(p,"phase",s.form_phase[i]<6?form_phases[s.form_phase[i]]:"unknown");}
         cJSON_AddBoolToObject(p,"eligible",C6_FORMLABS_ONLY?(standalone_config.printers[i].enabled&&standalone_config.printers[i].rotate):c6_print_eligible(&s.printers[i],c6_seconds()));cJSON_AddItemToArray(a,p);
     }
     char *body=cJSON_PrintUnformatted(j);cJSON_Delete(j);if(!body)return ESP_FAIL;

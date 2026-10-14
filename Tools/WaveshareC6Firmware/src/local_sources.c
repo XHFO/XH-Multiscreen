@@ -232,6 +232,12 @@ void c6_sources_reconfigure(void) {
     memcpy(state.media_status,extra_status,sizeof(extra_status));memcpy(state.media_revision,extra_revision,sizeof(extra_revision));media_focus=0;
     if(settings.latitude!=standalone_config.latitude||settings.longitude!=standalone_config.longitude)memset(&state.weather,0,sizeof(state.weather));
     settings=standalone_config;memcpy(state.entities,entities,sizeof(entities));memcpy(state.printers,previous,sizeof(previous));
+#if C6_FORMLABS_ONLY
+    for(unsigned i=0;i<C6_MAX_PRINTERS;i++){
+        state.form_phase[i]=0;
+        if(i<settings.printer_count&&c6_form_demo_seed(&settings.printers[i],&state.printers[i]))state.form_phase[i]=5;
+    }
+#endif
     state.ha_connected=false;state.generation++;xSemaphoreGive(lock);
 }
 void c6_sources_display_options(int revision,bool flip_animation){
@@ -707,7 +713,7 @@ static void form_task(void *arg){
                 for(unsigned k=0;k<settings.printer_count;k++)if(media_focus&(1U<<k))next[k]=0;
 #endif
             }
-            if(settings.enabled&&i<settings.printer_count&&settings.printers[i].enabled&&settings.printers[i].source_formlabs&&c6_seconds()>=next[i]){
+            if(settings.enabled&&i<settings.printer_count&&c6_form_pollable(&settings.printers[i])&&c6_seconds()>=next[i]){
 #if C6_FORMLABS_ONLY
                 const c6_printer_config_t *p=&settings.printers[i];
                 snprintf(w->printer.serial,sizeof(w->printer.serial),"%s",p->serial);
@@ -788,7 +794,7 @@ bool c6_sources_weather_refresh(void){
     xSemaphoreGive(lock);return allow;
 }
 static void weather_task(void *arg) {
-    uint64_t next=0;double last_lat=100,last_lon=200;
+    uint64_t next=0;double last_lat=100,last_lon=200;bool last_enabled=false;
     nvs_handle_t store;
     if(nvs_open(C6_WEATHER_NAMESPACE,NVS_READWRITE,&store)==ESP_OK) {
         c6_weather_state_t cached={0};size_t size=sizeof(cached);
@@ -804,6 +810,8 @@ static void weather_task(void *arg) {
         }
         xSemaphoreGive(lock);
         if(last_lat!=lat||last_lon!=lon){last_lat=lat;last_lon=lon;next=0;}
+        if(enabled&&!last_enabled)next=0;
+        last_enabled=enabled;
         if(!enabled){weather_phase(0);vTaskDelay(pdMS_TO_TICKS(1000));continue;}
         // DHCP/resource deferral does not consume the network failure backoff.
         if(!ha_network_ready()){weather_phase(1);vTaskDelay(pdMS_TO_TICKS(1000));continue;}

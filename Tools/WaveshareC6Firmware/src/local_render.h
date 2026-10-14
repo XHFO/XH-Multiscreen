@@ -1,6 +1,7 @@
 // Included only by the HTTP/display owner. Network callbacks never draw.
 // The implementation and redistributable smooth font are shared with SwiftPM.
 #include "c6_display_renderer.h"
+#include "form_demo.h"
 static uint64_t weather_hash_bytes(uint64_t hash,const void *bytes,size_t count);
 static uint64_t render_string_key(uint64_t hash,const char *text){return weather_hash_bytes(hash,text,strlen(text)+1);}
 static uint64_t render_controls_key(uint64_t hash){
@@ -84,18 +85,19 @@ static void draw_printer(unsigned index,const c6_source_snapshot_t *sources){
     c6_sources_media_focus(-1,(int)index);
     static uint64_t visible_key;static uint32_t rendered_generation;static bool drawn;
     const c6_printer_state_t *s=&sources->printers[index];const c6_printer_config_t *p=&standalone_config.printers[index];
-    bool show_image=c6_printer_images_enabled(p);
+    bool demo=c6_form_is_demo(p),show_image=!demo&&c6_printer_images_enabled(p);
     char time_text[64]={0},updated_text[64]={0},layers[64]={0};uint64_t monotonic=c6_seconds();time_t wall=time(NULL);
     if(p->source_formlabs&&p->show_layers&&s->layer_count>0)snprintf(layers,sizeof(layers),local_format("层数 %d / %d","LAYERS %d / %d"),s->layer,s->layer_count);
     uint64_t remaining_seconds=(uint64_t)s->remaining*60;
-    if(s->remaining_valid&&c6_print_active(s->status)&&monotonic>=s->remaining_updated){uint64_t elapsed=monotonic-s->remaining_updated;remaining_seconds=elapsed<remaining_seconds?remaining_seconds-elapsed:0;}
+    if(!demo&&s->remaining_valid&&c6_print_active(s->status)&&monotonic>=s->remaining_updated){uint64_t elapsed=monotonic-s->remaining_updated;remaining_seconds=elapsed<remaining_seconds?remaining_seconds-elapsed:0;}
     if(p->show_remaining){
         if(s->completed_at)snprintf(time_text,sizeof(time_text),"%s",local_format(C6_FORMLABS_ONLY?"打印已完成":"已完成 · 保留30分钟","PRINT COMPLETE"));
-        else if(p->time_mode==1&&wall>1700000000&&(s->end_epoch||s->remaining_valid)){
+        else if(!demo&&p->time_mode==1&&wall>1700000000&&(s->end_epoch||s->remaining_valid)){
             time_t finish=(s->end_epoch?s->end_epoch:(uint64_t)wall+remaining_seconds)+standalone_config.timezone;struct tm t;gmtime_r(&finish,&t);snprintf(time_text,sizeof(time_text),local_format("预计结束 %02d:%02d","END %02d:%02d"),t.tm_hour,t.tm_min);
-        }else if(p->time_mode==0&&s->remaining_valid){unsigned mins=(remaining_seconds+59)/60;if(mins>=60)snprintf(time_text,sizeof(time_text),local_format("剩余 %u时%u分","ETA %uh %um"),mins/60,mins%60);else snprintf(time_text,sizeof(time_text),local_format("剩余 %u分钟","ETA %um"),mins);}
+        }else if((demo||p->time_mode==0)&&s->remaining_valid){unsigned mins=(remaining_seconds+59)/60;if(mins>=60)snprintf(time_text,sizeof(time_text),local_format("剩余 %u时%u分","ETA %uh %um"),mins/60,mins%60);else snprintf(time_text,sizeof(time_text),local_format("剩余 %u分钟","ETA %um"),mins);}
     }
     if(s->updated&&wall>1700000000&&monotonic>=s->updated){time_t updated=wall-(time_t)(monotonic-s->updated)+standalone_config.timezone;struct tm t;gmtime_r(&updated,&t);snprintf(updated_text,sizeof(updated_text),local_format("数据更新 %02d:%02d","UPDATED %02d:%02d"),t.tm_hour,t.tm_min);}
+    if(demo)snprintf(updated_text,sizeof(updated_text),"DEMO / FIXED");
     bool is_error=*s->error&&strcmp(s->error,"0")&&strcmp(s->error,"none")&&strcmp(s->error,"unknown")&&strcmp(s->error,"unavailable")&&strcmp(s->error,"无错误");
     c6_render_printer_t value={.name=*p->name?p->name:p->serial,.task=s->task,.status=s->status,
         .progress=s->progress,.remaining=s->remaining,.connected=s->connected,.completed=s->completed_at!=0,
@@ -108,7 +110,7 @@ static void draw_printer(unsigned index,const c6_source_snapshot_t *sources){
     value.camera_configured=show_image&&!p->source_formlabs&&*p->image_entity&&(p->live_image||!strncmp(p->image_entity,"camera.",7));
     value.cover_configured=show_image&&(p->source_formlabs||*p->task_cover_entity||(*p->image_entity&&!value.camera_configured));
 #if C6_FORMLABS_ONLY
-    value.card_style=p->card_style;value.remaining_seconds=remaining_seconds>UINT32_MAX?UINT32_MAX:(unsigned)remaining_seconds;
+    value.demo=demo;value.card_style=p->card_style;value.remaining_seconds=remaining_seconds>UINT32_MAX?UINT32_MAX:(unsigned)remaining_seconds;
     value.remaining_available=s->remaining_valid;value.progress_available=s->progress_valid;
 #endif
     uint64_t key=render_controls_key(UINT64_C(14695981039346656037));
@@ -124,6 +126,11 @@ static void draw_printer(unsigned index,const c6_source_snapshot_t *sources){
     key=render_string_key(key,layers);key=render_string_key(key,value.material);key=weather_hash_bytes(key,&p->source_formlabs,sizeof(p->source_formlabs));
 #if C6_FORMLABS_ONLY
     key=weather_hash_bytes(key,&value.card_style,sizeof(value.card_style));
+    // Body icons depend on real status/connectivity even if the small header
+    // status is hidden. A cloud change must not leave a stale ready icon.
+    key=render_string_key(key,s->status);key=weather_hash_bytes(key,&s->connected,sizeof(s->connected));
+    key=weather_hash_bytes(key,&value.is_error,sizeof(value.is_error));key=weather_hash_bytes(key,&value.completed,sizeof(value.completed));
+    key=weather_hash_bytes(key,&value.demo,sizeof(value.demo));
     if(p->card_style==1)key=weather_hash_bytes(key,&value.progress,sizeof(value.progress));
     if(p->card_style==2)key=weather_hash_bytes(key,&value.completed,sizeof(value.completed));
     key=weather_hash_bytes(key,&value.progress_available,sizeof(value.progress_available));
@@ -149,37 +156,14 @@ static void draw_printer_overview(const c6_source_snapshot_t *sources){
     for(unsigned i=0;i<count;i++){
         const c6_printer_config_t *p=&standalone_config.printers[i];const c6_printer_state_t *s=&sources->printers[i];
         rows[i]=(c6_render_printer_summary_t){.name=*p->name?p->name:p->serial,.status=s->status,.progress=s->progress,
-            .enabled=p->enabled,.connected=p->enabled&&s->connected,.progress_available=p->enabled&&s->progress_valid};
+            .enabled=p->enabled,.connected=p->enabled&&s->connected,.progress_available=p->enabled&&s->progress_valid,.demo=c6_form_is_demo(p)};
+        key=weather_hash_bytes(key,&rows[i].demo,sizeof(rows[i].demo));
         key=render_string_key(key,rows[i].name);key=weather_hash_bytes(key,&rows[i].enabled,sizeof(rows[i].enabled));
         key=weather_hash_bytes(key,&rows[i].connected,sizeof(rows[i].connected));key=weather_hash_bytes(key,&rows[i].progress_available,sizeof(rows[i].progress_available));
         if(rows[i].enabled){if(rows[i].connected)key=render_string_key(key,s->status);if(rows[i].progress_available)key=weather_hash_bytes(key,&s->progress,sizeof(s->progress));}
     }
     if(drawn&&key==visible_key&&generation==frame_generation)return;
     c6_renderer_printer_overview(renderer(),rows,count);calibrated_display();drawn=true;visible_key=key;generation=frame_generation;
-}
-// Runtime fixture only: no source slot, credentials, network requests or NVS.
-static void draw_demo_printer(void){
-    static uint8_t picture[40*40*2];static bool initialized;
-    static uint32_t generation;static int language=-1,digit_style=-1,card_style=-1;
-    int selected_style=standalone_config.printer_count?standalone_config.printers[0].card_style:0;
-    if(generation==frame_generation&&language==standalone_config.language&&digit_style==standalone_config.digit_style&&card_style==selected_style)return;
-    if(!initialized){
-        for(unsigned y=0;y<40;y++)for(unsigned x=0;x<40;x++){
-            int dx=(int)x-20,dy=(int)y-19;unsigned d=dx*dx+dy*dy;
-            bool model=d<240&&d>60;unsigned shade=model?100+x*3+y:24;
-            if(y>32&&x>5&&x<35)shade=72;
-            unsigned v=((shade>>3)<<11)|((shade>>2)<<5)|(shade>>3);
-            unsigned i=(y*40+x)*2;picture[i]=v>>8;picture[i+1]=v;
-        }initialized=true;
-    }
-    c6_render_printer_t value={.name=local_format("演示 · Form 4","DEMO · F4"),
-        .task="Turbine housing",.status="printing",.progress=74,.connected=true,
-        .card_style=selected_style,.remaining_seconds=42*60,.remaining_available=true,.progress_available=true,
-        .show_task=true,.show_progress=true,.show_status=true,.show_remaining=true,.show_image=true,
-        .time_text=local_format("剩余 42分钟","ETA 42m"),.updated_text=local_format("模拟数据","DEMO DATA"),
-        .formlabs=true,.layers=local_format("层数 888 / 1200","LAYERS 888 / 1200"),.material="Grey V5",
-        .thumbnail_rgb565=picture,.thumbnail_width=40,.thumbnail_height=40,.thumbnail_stride=80,.style=local_style()};
-    c6_renderer_printer(renderer(),&value);calibrated_display();generation=frame_generation;language=standalone_config.language;digit_style=standalone_config.digit_style;card_style=selected_style;
 }
 #endif
 static void draw_weather_content(const c6_source_snapshot_t *sources){

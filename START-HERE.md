@@ -1,6 +1,6 @@
 # Form Monitor C6 · development source
 
-Version: 2.0.0-formlabs-alpha.9
+Version: 2.0.0-formlabs-alpha.14
 Hardware: Waveshare ESP32-C6-LCD-1.3 / 4 MB
 
 This is the dedicated Formlabs target, not the macOS app or the generic C6 target.
@@ -12,4 +12,4 @@ Project code: MIT. Third-party fonts/QR code retain their included notices.
 Enclosure models, website and photos are not included and are not covered by MIT.
 No Wi-Fi/printing credentials, full-flash dumps or private test outputs are included.
 No promised cloud availability, OTA reliability, long-term or real multi-printer validation.
-Public alpha source, not a stable release. Start with the root README.md.
+Public alpha source, not a stable release. It corresponds to the alpha.14 source snapshot used by the webpage installer. Start with the root README.md.
